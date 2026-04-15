@@ -30,6 +30,11 @@
 static z_owned_session_t s_wrapper;
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
+// Helper function that provides ns from tick_count for freertos
+static int64_t rmw_zenoh_time_now_ns(void) {
+    return (int64_t)(xTaskGetTickCount() * 1000000000ULL / configTICK_RATE_HZ);
+}
+
 static void rmw_zenoh_gen_attachment_gid(rmw_attachment_t* attachment) {
     attachment->rmw_gid_size = RMW_GID_SIZE;
     for (int i = 0; i < RMW_GID_SIZE; i++) {
@@ -181,7 +186,7 @@ static void queriable_data_handler(z_loaned_query_t *query, void *arg) {
 
         // rmw attachment
         srv->attachment.sequence_number = 1;
-        srv->attachment.time = z_clock_now().tv_nsec;
+        srv->attachment.time = rmw_zenoh_time_now_ns();
         z_query_reply_options_t options;
         z_query_reply_options_default(&options);
         z_owned_bytes_t tx_attachment;
@@ -271,6 +276,7 @@ picoros_res_t picoros_interface_init(picoros_interface_t* ifx) {
     }
     _PR_LOG("Zenoh setup finished!\r\n");
 
+    #if Z_FEATURE_MULTI_THREAD == 1
     // Start read and lease tasks for zenoh-pico
     if((res = zp_start_read_task(z_session_loan_mut(&s_wrapper), NULL)) != Z_OK
     || (res = zp_start_lease_task(z_session_loan_mut(&s_wrapper), NULL)) != Z_OK
@@ -279,6 +285,7 @@ picoros_res_t picoros_interface_init(picoros_interface_t* ifx) {
         _PR_LOG("Failed to start read/lease tasks! Error:%d\n", res);
         return PICOROS_ERROR;
     }
+    #endif
     #if Z_FEATURE_MULTI_THREAD == 0
         ifx->last_keepalive_time = z_clock_now();
     #endif
@@ -313,8 +320,12 @@ picoros_res_t picoros_single_threaded_loop(picoros_interface_t* ifx){
 #endif
 
 bool picoros_interface_is_up(void) {
-    return ( zp_read_task_is_running(z_session_loan(&s_wrapper))
-    || zp_lease_task_is_running(z_session_loan(&s_wrapper)) );
+#if Z_FEATURE_MULTI_THREAD == 1
+    return (
+        zp_read_task_is_running(z_session_loan(&s_wrapper)) ||
+        zp_lease_task_is_running(z_session_loan(&s_wrapper)));
+#endif
+    return true;
 }
 
 void picoros_interface_close(void) {
@@ -383,7 +394,7 @@ picoros_res_t picoros_publish(picoros_publisher_t* pub, uint8_t* payload, size_t
     z_publisher_put_options_default(&options);
 
     pub->attachment.sequence_number++;
-    pub->attachment.time = z_clock_now().tv_nsec;
+    pub->attachment.time = rmw_zenoh_time_now_ns();
 
     z_owned_bytes_t z_attachment;
     z_bytes_from_static_buf(&z_attachment, (uint8_t*)&pub->attachment, sizeof(rmw_attachment_t));
@@ -534,7 +545,7 @@ picoros_res_t picoros_service_call(picoros_srv_client_t * client, uint8_t* paylo
     rmw_attachment_t attachment = {
         .rmw_gid_size = RMW_GID_SIZE,
         .sequence_number = 1,
-        .time = z_clock_now().tv_nsec,
+        .time = rmw_zenoh_time_now_ns(),
     };
     z_owned_bytes_t tx_attachment;
     z_bytes_copy_from_buf(&tx_attachment, (uint8_t*)&attachment, sizeof(rmw_attachment_t));
