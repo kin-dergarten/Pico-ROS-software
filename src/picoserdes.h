@@ -171,7 +171,7 @@ typedef char* rstring;
  BASE_TYPES_LIST(SEQUENCE_DECLARE)
  MSG_LIST(BTYPE_DECLARE, CTYPE_DECLARE, BTYPE_DECLARE, FIELD_EXPAND, ARRAY_EXPAND, SEQUENCE_EXPAND)
  SRV_LIST(SRV_DECLARE, REQUEST_DECLARE, REPLY_DECLARE, FIELD_EXPAND, ARRAY_EXPAND, SEQUENCE_EXPAND)
- 
+
 /** @} */
 #undef CAT
 #undef FIELD_EXPAND
@@ -319,7 +319,7 @@ BASE_TYPES_LIST(PS_DES_FUNC_DEF)
  */
 #define ps_serialize(pBUF, pMSG, MAX) PS_EXPAND(_ps_serialize(pBUF, pMSG, MAX))
 #define _ps_serialize(pBUF, pMSG, MAX)                                                              \
-    ({                                                                                              \
+    __extension__ ({                                                                                \
         ucdrBuffer writer = {};                                                                     \
         *((uint32_t*)pBUF) =  0x0100; /*Little endian header*/                                      \
         ucdr_init_buffer(&writer, pBUF + sizeof(uint32_t), MAX - sizeof(uint32_t));                 \
@@ -341,7 +341,7 @@ BASE_TYPES_LIST(PS_DES_FUNC_DEF)
  */
 #define ps_deserialize(pBUF, pMSG, MAX) PS_EXPAND(_ps_deserialize(pBUF, pMSG, MAX))
 #define _ps_deserialize(pBUF, pMSG, MAX)                                                            \
-    ({                                                                                              \
+    __extension__ ({                                                                                \
         ucdrBuffer reader = {};                                                                     \
         ucdr_init_buffer(&reader, pBUF + sizeof(uint32_t), MAX - sizeof(uint32_t));                 \
         bool _ok = _Generic((pMSG),                                                                 \
