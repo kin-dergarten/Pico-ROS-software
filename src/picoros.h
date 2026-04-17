@@ -269,14 +269,15 @@ picoros_res_t picoros_interface_init(picoros_interface_t* ifx);
  * @ingroup interface
  */
 picoros_res_t picoros_single_threaded_loop(picoros_interface_t* ifx);
-
 #endif
 
+#if Z_FEATURE_MULTI_THREAD == 1
 /**
  * @brief Check if network interface is running
  * @ingroup interface
  */
 bool picoros_interface_is_up(void);
+#endif
 
 /**
  * @brief Close the network interface

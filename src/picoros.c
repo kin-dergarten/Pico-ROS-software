@@ -76,17 +76,26 @@ static int rmw_zenoh_node_liveliness_keyexpr(picoros_node_t* node, char* keyexpr
 }
 
 static int rmw_zenoh_topic_keyexpr(picoros_node_t* node, rmw_topic_t* topic, char* keyexpr) {
-    return snprintf(keyexpr, KEYEXPR_SIZE, "%" PRIu32 "/%s/%s_/RIHS01_%s", node->domain_id, topic->name, topic->type,
+    // RIHS01_<hex> is not supported by ros2 humble - rmw_zenoh uses .rihs_hash = "TypeHashNotSupported" (no RIHS01_ prefix)
+    // This breaks the hashes for never ros2 distros
+    // The RIHS01_ to the MSG_LIST to not break it
+    // #define MSG_LIST(BTYPE, CTYPE, TTYPE, FIELD, ARRAY, SEQUENCE) \
+    // CTYPE(ros_Duration, \
+    //     "builtin_interfaces::msg::dds_::Duration", \
+    //     "RIHS01_e8d009f659816f758b75334ee1a9ca5b5c0b859843261f14c7f937349599d93b", \
+    //     FIELD(int32_t, sec) \
+    //     FIELD(uint32_t, nanosec)
+    return snprintf(keyexpr, KEYEXPR_SIZE, "%" PRIu32 "/%s/%s_/%s", node->domain_id, topic->name, topic->type,
                     topic->rihs_hash);
 }
 
 static int rmw_zenoh_service_keyexpr(picoros_node_t* node, rmw_topic_t* topic, char* keyexpr) {
     if (node->name == NULL){
-        return snprintf(keyexpr, KEYEXPR_SIZE, "%" PRIu32 "/%s/%s_/RIHS01_%s", node->domain_id, topic->name,
+        return snprintf(keyexpr, KEYEXPR_SIZE, "%" PRIu32 "/%s/%s_/%s", node->domain_id, topic->name,
                             topic->type, topic->rihs_hash);
     }
     else{
-        return snprintf(keyexpr, KEYEXPR_SIZE, "%" PRIu32 "/%s/%s/%s_/RIHS01_%s", node->domain_id, node->name, topic->name,
+        return snprintf(keyexpr, KEYEXPR_SIZE, "%" PRIu32 "/%s/%s_/%s", node->domain_id, topic->name,
                             topic->type, topic->rihs_hash);
     }
 }
@@ -126,7 +135,7 @@ static int rmw_zenoh_topic_liveliness_keyexpr(picoros_node_t* node, rmw_topic_t*
 #else
             "0/11/%s/%%/%%/%s/%%%s/"
 #endif
-            "%s_/RIHS01_%s"
+            "%s_/%s"
             "/::,:,:,:,,",
             node->domain_id,
             id.id[0], id.id[1],  id.id[2], id.id[3], id.id[4], id.id[5], id.id[6],
@@ -277,14 +286,10 @@ picoros_res_t picoros_interface_init(picoros_interface_t* ifx) {
     _PR_LOG("Zenoh setup finished!\r\n");
 
     #if Z_FEATURE_MULTI_THREAD == 1
-    // Start read and lease tasks for zenoh-pico
-    if((res = zp_start_read_task(z_session_loan_mut(&s_wrapper), NULL)) != Z_OK
-    || (res = zp_start_lease_task(z_session_loan_mut(&s_wrapper), NULL)) != Z_OK
-    ){
-        z_session_drop(z_session_move(&s_wrapper));
-        _PR_LOG("Failed to start read/lease tasks! Error:%d\n", res);
-        return PICOROS_ERROR;
-    }
+    // Background read/lease tasks are started automatically inside z_open() in
+    // this version of zenoh-pico; zp_start_read_task / zp_start_lease_task are
+    // deprecated no-ops
+    (void)res;
     #endif
     #if Z_FEATURE_MULTI_THREAD == 0
         ifx->last_keepalive_time = z_clock_now();
@@ -295,11 +300,12 @@ picoros_res_t picoros_interface_init(picoros_interface_t* ifx) {
 
 #if Z_FEATURE_MULTI_THREAD == 0
 picoros_res_t picoros_single_threaded_loop(picoros_interface_t* ifx){
+    picoros_res_t pico_res = PICOROS_OK;
     z_result_t res = Z_OK;
     res = zp_read(z_session_loan(&s_wrapper), ifx->read_opts);
     if (res != Z_OK){
         _PR_LOG("Read task error:%d\n", res);
-        return PICOROS_ERROR;
+        pico_res = PICOROS_ERROR;
     }
     unsigned long elapsed_ms = z_clock_elapsed_ms(&ifx->last_keepalive_time);
     if (elapsed_ms >= (Z_TRANSPORT_LEASE / Z_TRANSPORT_LEASE_EXPIRE_FACTOR)) {
@@ -307,26 +313,25 @@ picoros_res_t picoros_single_threaded_loop(picoros_interface_t* ifx){
         res = zp_send_keep_alive(z_session_loan(&s_wrapper), ifx->keep_alive_opts);
         if (res != Z_OK){
             _PR_LOG("Keep alive task error:%d\n", res);
-            return PICOROS_ERROR;
+            pico_res = PICOROS_ERROR;
         }
         res = zp_send_join(z_session_loan(&s_wrapper), ifx->join_options);
         if (res != Z_OK){
             _PR_LOG("Join task error:%d\n", res);
-            return PICOROS_ERROR;
+            pico_res = PICOROS_ERROR;
         }
     }
-    return PICOROS_OK;
+    return pico_res;
 }
 #endif
 
-bool picoros_interface_is_up(void) {
 #if Z_FEATURE_MULTI_THREAD == 1
+bool picoros_interface_is_up(void) {
     return (
         zp_read_task_is_running(z_session_loan(&s_wrapper)) ||
         zp_lease_task_is_running(z_session_loan(&s_wrapper)));
-#endif
-    return true;
 }
+#endif
 
 void picoros_interface_close(void) {
     z_close(z_session_loan_mut(&s_wrapper), NULL);
