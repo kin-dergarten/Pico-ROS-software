@@ -77,8 +77,7 @@ static int rmw_zenoh_node_liveliness_keyexpr(picoros_node_t* node, char* keyexpr
 
 static int rmw_zenoh_topic_keyexpr(picoros_node_t* node, rmw_topic_t* topic, char* keyexpr) {
     // RIHS01_<hex> is not supported by ros2 humble - rmw_zenoh uses .rihs_hash = "TypeHashNotSupported" (no RIHS01_ prefix)
-    // This breaks the hashes for never ros2 distros
-    // The RIHS01_ to the MSG_LIST to not break it
+    // This breaks the hashes for never ros2 distros, we could add the RIHS01_ to the MSG_LIST to not break it:
     // #define MSG_LIST(BTYPE, CTYPE, TTYPE, FIELD, ARRAY, SEQUENCE) \
     // CTYPE(ros_Duration, \
     //     "builtin_interfaces::msg::dds_::Duration", \
@@ -95,8 +94,8 @@ static int rmw_zenoh_service_keyexpr(picoros_node_t* node, rmw_topic_t* topic, c
                             topic->type, topic->rihs_hash);
     }
     else{
-        return snprintf(keyexpr, KEYEXPR_SIZE, "%" PRIu32 "/%s/%s_/%s", node->domain_id, topic->name,
-                            topic->type, topic->rihs_hash);
+        return snprintf(keyexpr, KEYEXPR_SIZE, "%" PRIu32 "/%s/%s/%s_/%s", node->domain_id, node->name,
+                            topic->name, topic->type, topic->rihs_hash);
     }
 }
 
