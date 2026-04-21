@@ -302,7 +302,7 @@ picoros_res_t picoros_single_threaded_loop(picoros_interface_t* ifx){
     picoros_res_t pico_res = PICOROS_OK;
     z_result_t res = Z_OK;
     res = zp_read(z_session_loan(&s_wrapper), ifx->read_opts);
-    if (res != Z_OK){
+    if ((res != Z_OK) && (res != Z_NO_DATA_PROCESSED)){
         _PR_LOG("Read task error:%d\n", res);
         pico_res = PICOROS_ERROR;
     }
